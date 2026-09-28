@@ -1,0 +1,8 @@
+feat: modular AI core (image/text/video/tts) + professional Telegram wrapper
+
+- core: providers (Pollinations), modality services, MCP tool registry,
+  per-user/per-chat rate limits, SQLite storage, ru/en i18n
+- tgbot: private chat + group flows (commands, mention, reply, my_chat_member),
+  inline keyboards, human-friendly error copy
+- deploy: Docker Compose + Dockerfile (non-root, /data volume)
+- docs: modular EN/RU architecture, core-api, mcp, telegram-ux, roadmap, deployment
