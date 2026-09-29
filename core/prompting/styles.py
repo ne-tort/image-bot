@@ -30,16 +30,19 @@ def apply_style(prompt: str, style_key: Optional[str]) -> str:
     return f"{prompt}, {suffix}" if suffix else prompt
 
 
-# Промпт-улучшение через текстовую модель переехало в core/prompting/enhancer.py:
-# SYSTEM_PROMPT (принципы Grok Imagine) + enhance_prompt().
-async def enhance_with_text(prompt: str, text_provider: MediaProvider, locale: str = "ru") -> str:
-    """Совместимость: улучшение через новый enhancer (для MCP-инструмента)."""
+async def enhance_with_text(prompt: str, text_provider, locale: str = "ru") -> str:
+    """Совместимость с MCP-инструментом: улучшение через новый enhancer."""
     from core.prompting.enhancer import SYSTEM_PROMPT, _extract_prompt
     from core.types import GenerationRequest, MediaKind
     try:
         media = await text_provider.generate(
-            GenerationRequest(prompt=SYSTEM_PROMPT + "\n\nUser request:\n" + prompt,
-                              kind=MediaKind.TEXT, user_id=0)
+            GenerationRequest(
+                prompt="The user wants a new image. Their request:\n" + prompt,
+                kind=MediaKind.TEXT, user_id=0,
+                system_prompt=SYSTEM_PROMPT,
+                extra={"no_retry": True},
+            ),
+            timeout=45.0,
         )
         raw = media.data if isinstance(media.data, str) else str(media.data)
         out = _extract_prompt(raw)

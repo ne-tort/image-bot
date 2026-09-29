@@ -219,7 +219,16 @@ class SpecDrivenProvider:
         messages = []
         if request.system_prompt:
             messages.append({"role": "system", "content": request.system_prompt})
-        messages.append({"role": "user", "content": request.prompt})
+        if request.vision_images:
+            # multimodal: [text, image_url, ...] — grok-4.7 видит картинку
+            import base64 as _b64
+            content: list = [{"type": "text", "text": request.prompt}]
+            for img in request.vision_images:
+                uri = _bytes_to_data_uri(img)
+                content.append({"type": "image_url", "image_url": {"url": uri}})
+            messages.append({"role": "user", "content": content})
+        else:
+            messages.append({"role": "user", "content": request.prompt})
         # enhance: таймаут без ретраев — быстрый fallback к оригиналу лучше ожидания
         no_retry = bool(request.extra.get("no_retry"))
         async def call() -> httpx.Response:

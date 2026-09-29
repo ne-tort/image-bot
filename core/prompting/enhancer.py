@@ -6,49 +6,40 @@ from core.types import GenerationRequest, MediaKind
 
 log = logging.getLogger(__name__)
 
-# Принципы дистиллированы из открытых field-tested гайдов по Grok Imagine
-# (Aurora-движок): natural language, front-load subject, порядок
-# Subject→style→environment→lighting→mood→technical, imperative-правки,
-# анти-паттерны: negation, keyword-stuffing, ключевое — в конце.
-SYSTEM_PROMPT = """You are a prompt engineer for the xAI Grok Imagine image model.
+# Принципы: Grok Imagine field guides (front-load, natural language, порядок
+# subject->style->environment->light->mood, imperative-правки, без negations).
+# ГЛАВНОЕ правило: запрос юзера — закон. Мы уточняем, не подменяем.
+SYSTEM_PROMPT = """You convert a user's image request into a final image prompt.
 
-Your job: understand what the user ACTUALLY wants to see, then rewrite their
-request into one optimal image prompt. Do not ask questions.
+CRITICAL: The user's request is the SPEC, not a hint. Every subject, action,
+style, and detail they named MUST appear in your output. You only ADD what is
+missing (light, framing, palette, mood) to make it render well — you never
+replace, drop, or 'improve' their choices.
 
-Think silently, then output ONLY the final prompt on the last line, prefixed
-with "PROMPT: ". No explanations before it.
+If the request already contains visual specifics, keep them VERBATIM and extend
+them. If it is short or vague, fill gaps conservatively — the most obvious,
+mainstream interpretation, nothing exotic.
 
-Rules for the final prompt:
-1. Natural, flowing English sentences — never a keyword dump, no comma-stacks
-   of tags, no quotes, no markdown.
-2. Front-load: the subject and its key action/appearance go in the first
-   20-30 words. Order: subject -> medium/style -> environment -> lighting
-   -> mood -> color palette -> technical (lens, quality).
-3. Concrete beats vague: replace "cinematic", "epic", "beautiful" with a
-   named shot type, light direction, and palette.
-4. No negations. Say what IS there ("sharp focus"), not what is absent.
-5. One clear visual idea. If the user's request contains several, pick the
-   dominant one and fold the rest into supporting detail.
-6. Infer unstated intent: if they say "a cat" they want a striking image of
-   a cat — decide the style, framing, and light FOR them, like a photographer
-   art-directing a shot.
-7. Keep the user's language ONLY if it is not English — otherwise output
-   English (the model's strongest language).
-8. Length: 40-90 words. Dense, specific, no filler.
+Output format — one paragraph of natural English (or the user's language if not
+English), 30-80 words, comma-free flowing sentences, no quotes, no markdown,
+no explanations. Put the subject and its action in the first 15 words.
+Order: subject -> style -> environment -> lighting -> mood. No negations.
 
-If the user's request is an EDIT instruction (changing an existing image),
-output an imperative instruction instead: "[Do X]. Keep [what must stay]
-unchanged." Keep those even shorter: 20-50 words.
-"""
+If you also receive an image, describe changes for it in imperative form:
+"[Do X]. Keep [pose, faces, composition, lighting] unchanged." 15-40 words.
+Use the image only to ground the edit — never contradict what the user asked.
+
+Reply with the final prompt ONLY. No preamble."""
 
 
 async def enhance_prompt(
     provider: MediaProvider, request: GenerationRequest,
 ) -> str:
-    """Прогнать запрос юзера через текстовую модель → улучшенный промпт.
+    """Запрос юзера → финальный промпт через текстовую модель.
 
-    Ошибка провайдера — НЕ фатальна для генерации: возвращаем оригинал
-    (деградация качества, не отказ в сервисе).
+    Vision: если в запросе есть референсы И доступен vision — модель
+    сначала видит картинку, потом пишет инструкцию правки.
+    Ошибка провайдера — деградация к оригиналу, не отказ.
     """
     from core.types import GenerationRequest as Req
     try:
@@ -59,6 +50,7 @@ async def enhance_prompt(
                 user_id=request.user_id,
                 chat_id=request.chat_id,
                 system_prompt=SYSTEM_PROMPT,
+                vision_images=list(request.reference_images) if request.reference_images else (),
                 extra={"no_retry": True},
             ),
             timeout=45.0,
@@ -77,16 +69,21 @@ def _user_message(request: GenerationRequest) -> str:
     is_edit = bool(request.reference_images)
     if is_edit:
         return (
-            "The user wants to EDIT an existing image. Their instruction:\n"
+            "The user attached an image and wants to EDIT it. Their instruction:\n"
             + request.prompt
         )
     return "The user wants a new image. Their request:\n" + request.prompt
 
 
 def _extract_prompt(text: str) -> str:
-    """Достать финальный промпт: строка после PROMPT: (или последняя непустая)."""
+    """Финальный промпт: последняя содержательная строка без префиксов."""
     lines = [l.strip() for l in text.strip().splitlines() if l.strip()]
+    # отбрасываем строки-рассуждения (модель иногда оставляет)
     for line in reversed(lines):
-        if line.lower().startswith("prompt:"):
+        low = line.lower()
+        if low.startswith("prompt:"):
             return line[7:].strip()
+        # строка-результат: без двоеточий-префиксов и слов-объяснений
+        if len(line) > 20 and not low.startswith(("the user", "i ", "okay", "note")):
+            return line
     return lines[-1] if lines else ""
