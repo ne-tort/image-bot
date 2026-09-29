@@ -1,34 +1,25 @@
 from __future__ import annotations
 from typing import Protocol, runtime_checkable
 
-from core.types import MediaKind, GeneratedMedia, GenerationRequest
+from core.providers.errors import (
+    Authentication, ContentRejected, CreditsExhausted, InvalidValue,
+    NotConfigured, NotImplementedKind, ProviderError, RateLimited, Transient,
+)
+from core.types import GeneratedMedia, GenerationRequest, MediaKind
 
-
-class ProviderError(Exception):
-    """Носитель причин провайдера; wrapper переводит в i18n-тексты."""
-
-    class RateLimited(ProviderError):
-        """429. retry_after в секундах."""
-        def __init__(self, retry_after: int = 60):
-            super().__init__(f"provider rate limited, retry in {retry_after}s")
-            self.retry_after = retry_after
-
-    class ContentRejected(ProviderError):
-        """Промпт отклонён модерацией/фильтром провайдера."""
-
-    class Transient(ProviderError):
-        """5xx / таймаут: можно повторить с backoff."""
-
-    class Fatal(ProviderError):
-        """401/403 и прочее, повтор бессмысленен."""
+# единая точка импорта ошибок для потребителей
+__all__ = [
+    "MediaProvider", "ProviderFactory", "ProviderError", "RateLimited",
+    "ContentRejected", "InvalidValue", "Transient", "Authentication",
+    "CreditsExhausted", "NotConfigured", "NotImplementedKind",
+]
 
 
 @runtime_checkable
 class MediaProvider(Protocol):
-    """Единый контракт для всех провайдеров и модальностей.
+    """Единый контракт провайдера любой модальности.
 
-    Один класс может уметь несколько kinds (Pollinations умеет все).
-    Меняется провайдер — меняется только адаптер в providers/.
+    Семантика ошибок — core.providers.errors; тексты для юзера — слой tgbot.
     """
 
     name: str
@@ -45,6 +36,6 @@ class MediaProvider(Protocol):
 
 @runtime_checkable
 class ProviderFactory(Protocol):
-    """DI-шов: tgbot получает провайдера, не зная о httpx."""
+    """DI-шов: сервисы получают провайдера для модальности, не зная деталей."""
 
     def for_kind(self, kind: MediaKind) -> MediaProvider: ...

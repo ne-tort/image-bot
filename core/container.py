@@ -3,8 +3,8 @@ from __future__ import annotations
 from core.config import CoreSettings
 from core.image.service import ImageService
 from core.mcp.tools import ToolContext, ToolRegistry
+from core.providers.adapter import SpecDrivenProvider
 from core.providers.base import ProviderFactory
-from core.providers.pollinations import PollinationsProvider
 from core.prompting.styles import enhance_with_text
 from core.ratelimit import Limiter, LimitProfile
 from core.storage import SqliteStorage
@@ -13,20 +13,26 @@ from core.tts.service import TTSService
 from core.types import GenerationRequest, MediaKind
 from core.video.service import VideoService
 
+_ANONYMOUS_OK = {"pollinations"}
+
 
 class CoreContainer:
-    """Композиция ядра. tgbot получает готовые сервисы, не зная деталей.
+    """Композиция ядра. Единственная точка склейки.
 
-    Единственное место, где провайдер, лимиты и хранилище склеиваются.
+    Провайдеры вариативны: имя из настроек → спека → адаптер.
+    IMAGE_PROVIDER / TEXT_PROVIDER независимы: картинки могут ходить
+    в Pollinations, а текст — в подписку Codex/Grok Build.
     """
 
     def __init__(self, settings: CoreSettings):
         self.settings = settings
         self.storage = SqliteStorage(settings.db_path)
-        self.provider = PollinationsProvider(
-            settings.pollinations_api_key, settings.pollinations_base_url
-        )
-        self._factory = _SingleProviderFactory(self.provider)
+
+        self._image_provider = SpecDrivenProvider.from_name(settings.image_provider)
+        self._text_provider = SpecDrivenProvider.from_name(settings.text_provider)
+
+        self._factory = _SplitProviderFactory(self._image_provider, self._text_provider)
+
         image_profile = LimitProfile(
             per_user_daily=settings.daily_image_limit,
             per_user_hourly=settings.hourly_image_limit,
@@ -48,10 +54,16 @@ class CoreContainer:
         await self.storage.connect()
 
     async def stop(self) -> None:
-        await self.provider.aclose()
+        await self._image_provider.aclose()
+        await self._text_provider.aclose()
         await self.storage.close()
 
-    # ── MCP-инструменты: текстовый ИИ командует генерацией ─
+    # ── MCP: текстовый ИИ командует генерацией ───────────
+    @property
+    def provider(self) -> SpecDrivenProvider:
+        """Текстовый провайдер для enhance-флоу (кнопка ✨)."""
+        return self._text_provider
+
     def _register_tools(self) -> None:
         async def generate_image(ctx: ToolContext, args: dict):
             req = GenerationRequest(
@@ -69,18 +81,24 @@ class CoreContainer:
             return await self.image.edit(req)
 
         async def enhance_prompt(ctx: ToolContext, args: dict):
-            return await enhance_with_text(args["prompt"], self.provider, ctx.locale)
+            return await enhance_with_text(args["prompt"], self._text_provider, ctx.locale)
 
         self.tools.register("generate_image", generate_image)
         self.tools.register("edit_image", edit_image)
         self.tools.register("enhance_prompt", enhance_prompt)
 
 
-class _SingleProviderFactory:
-    """Сейчас провайдер один; смена/рост — без правок сервисов."""
+class _SplitProviderFactory:
+    """Разные провайдеры на разные модальности. Сервисы этого не знают."""
 
-    def __init__(self, provider):
-        self._provider = provider
+    def __init__(self, image_provider, text_provider):
+        self._image = image_provider
+        self._text = text_provider
 
     def for_kind(self, kind: MediaKind):
-        return self._provider
+        if kind is MediaKind.IMAGE:
+            return self._image
+        if kind is MediaKind.TEXT:
+            return self._text
+        # video/tts пока на тех же рельсах
+        return self._text
