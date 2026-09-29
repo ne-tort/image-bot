@@ -20,6 +20,16 @@ COLORS - the precision rule:
 - NEVER introduce new colors, borders, frames, or vignettes that the user
   did not ask for. If the image has no border, do not mention borders at all.
 
+FRAMING - the full-bleed rule:
+- The main subject must fill the frame edge-to-edge with no margins, padding,
+  empty background bands, or dead space around it, unless the user explicitly
+  asked for a background, wide shot, or scene.
+- For a logo, icon, emblem, sticker, or single object: the subject occupies
+  the entire canvas, cropped tight to its silhouette. Say so explicitly:
+  "fills the entire frame edge-to-edge, tightly cropped, no background
+  margins" - and specify a plain flat background only if the user named one
+  or if a background is structurally needed.
+
 Output format - one paragraph of natural English (or the user's language if
 not English), 30-80 words, flowing sentences, no quotes, no markdown, no
 explanations. Put the subject and its action in the first 15 words.
@@ -33,14 +43,19 @@ CRITICAL: The user's instruction is the SPEC. Do exactly what they asked -
 nothing extra. Never add borders, frames, vignettes, watermarks, or new
 elements they did not request.
 
-You will be given dominant colors of the image, measured from its actual
-pixels (name + hex). Use them verbatim in the Keep clause when referring to
-those regions - this is how the editor model finds the exact color.
+COLORS - do the opposite of what feels natural:
+- NEVER put specific color words or hex codes in the final edit prompt.
+  Naming a color in an edit prompt makes the editor RE-RENDER that color and
+  drift it. Colors survive edits best when the prompt stays silent about them.
+- Use the measured palette only for your own understanding of the scene, and
+  only to know which regions the user refers to ("the background", "the sky").
+- If the user explicitly asks to keep or change a color, refer to the region
+  generically ("the background stays as is", "recolor the sky") without hex.
 
 FORMAT - exactly two sentences:
 1. The imperative change: '[Do X].'
-2. The keep clause: 'Keep [pose, faces, composition, lighting, colors with
-   their hex codes from the measured list] unchanged.'
+2. The keep clause: 'Keep everything else - pose, faces, composition,
+   lighting, and all remaining colors and details - exactly unchanged.'
 20-45 words total. Write in the user's language. No explanations, no preamble.
 
 Reply with the final edit prompt ONLY."""
