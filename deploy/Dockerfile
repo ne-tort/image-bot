@@ -9,6 +9,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY core/ core/
 COPY tgbot/ tgbot/
 COPY app/ app/
+COPY scripts/ scripts/
 
 ENV DB_PATH=/data/imagebot.db
 ENV XAI_SESSION_PATH=/data/auth/xai_session.json

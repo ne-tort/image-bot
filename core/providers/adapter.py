@@ -19,6 +19,7 @@ from core.providers.retry import RetryPolicy, retry_call
 from core.providers.spec import EndpointSpec, ProviderSpec
 from core.types import GeneratedMedia, GenerationRequest, MediaKind
 from core.prompting.styles import apply_style
+from core.providers.xai_oauth import Session as _XaiSession, XAI_OAUTH_CLIENT_ID
 
 log = logging.getLogger(__name__)
 
@@ -30,8 +31,8 @@ _DEFAULTS = {
     "IMAGE_MODEL": "gpt-image-1",
     "IMAGE_EDIT_MODEL": "gpt-image-1",
     "TEXT_MODEL": "gpt-5-mini",
-    "GROK_IMAGE_MODEL": "grok-2-image",
-    "GROK_TEXT_MODEL": "grok-4",
+    "GROK_IMAGE_MODEL": "grok-imagine-image",
+    "GROK_TEXT_MODEL": "grok-4.6",
     "GROK_BUILD_BASE_URL": "https://api.x.ai/v1",
 }
 
@@ -164,38 +165,62 @@ class SpecDrivenProvider:
             self._check(resp)
             return GeneratedMedia(kind=MediaKind.IMAGE, data=resp.content,
                                   prompt=prompt, model=model, seed=seed)
-        # OpenAI-форма: POST /v1/images/generations
+        # OpenAI-форма: POST /images/generations (база включает /v1)
+        payload: dict = {"model": model, "prompt": prompt, "n": 1}
+        if self.spec.edit_json_form:
+            # xAI-подписка: aspect_ratio вместо size
+            payload["aspect_ratio"] = _aspect_ratio(request.resolution)
+        else:
+            payload["size"] = request.resolution.value
+        if self.spec.b64_response:
+            payload["response_format"] = "b64_json"
         async def call() -> httpx.Response:
             return await self._request(
                 "POST", self.spec.endpoints.generate,
                 timeout=timeout,
-                json={"model": model, "prompt": prompt, "size": request.resolution.value,
-                      "n": 1, "response_format": "b64_json"},
+                json=payload,
             )
         resp = await retry_call(call, self._retry, what="image.generate")
         self._check(resp)
-        return self._media_from_b64(resp, model, prompt, seed)
+        return await self._media_from_response(resp, model, prompt, seed)
 
     async def _image_edit(self, request: GenerationRequest, timeout: float) -> GeneratedMedia:
         prompt = apply_style(request.prompt, request.style)
         model = _interp(self.spec.image_edit_model)
+        if self.spec.edit_json_form:
+            # xAI-форма: JSON, image = data-URI; до 5 источников
+            images = [_bytes_to_data_uri(img) for img in request.reference_images[:5]]
+            payload: dict = {"model": model, "prompt": prompt,
+                             "image": {"url": images[0], "type": "image_url"}}
+            if len(images) > 1:
+                payload["extra_images"] = [{"url": u, "type": "image_url"} for u in images[1:]]
+            async def call_json() -> httpx.Response:
+                return await self._request(
+                    "POST", self.spec.endpoints.edit, timeout=timeout, json=payload,
+                )
+            resp = await retry_call(call_json, self._retry, what="image.edit")
+            self._check(resp)
+            return await self._media_from_response(resp, model, prompt, seed=None)
+        # OpenAI-форма: multipart
         files = [("image[]", (f"ref{i}.jpg", img, "image/jpeg"))
                  for i, img in enumerate(request.reference_images)]
-        async def call() -> httpx.Response:
+        async def call_form() -> httpx.Response:
             return await self._request(
                 "POST", self.spec.endpoints.edit, timeout=timeout,
                 data={"prompt": prompt, "response_format": "b64_json", "model": model},
                 files=files,
             )
-        resp = await retry_call(call, self._retry, what="image.edit")
+        resp = await retry_call(call_form, self._retry, what="image.edit")
         self._check(resp)
-        return self._media_from_b64(resp, model, prompt, seed=None)
+        return await self._media_from_response(resp, model, prompt, seed=None)
 
     async def _text(self, request: GenerationRequest, timeout: float) -> GeneratedMedia:
         model = _interp(self.spec.text_model)
+        chat_base = _interp(self.spec.endpoints.chat_base_url) if self.spec.endpoints.chat_base_url else ""
         async def call() -> httpx.Response:
             return await self._request(
                 "POST", self.spec.endpoints.chat, timeout=timeout,
+                base_override=(chat_base or None),
                 json={"model": model, "messages": [{"role": "user", "content": request.prompt}]},
             )
         resp = await retry_call(call, self._retry, what="text.generate")
@@ -206,11 +231,13 @@ class SpecDrivenProvider:
                               prompt=request.prompt, model=model)
 
     # ── транспорт ────────────────────────────────────────
-    async def _request(self, method: str, path: str, *, timeout: float, **kw) -> httpx.Response:
+    async def _request(self, method: str, path: str, *, timeout: float,
+                        base_override: "str | None" = None, **kw) -> httpx.Response:
         headers = dict(self.spec.headers)
-        if self._auth is not None:
+        if self._auth is not None and base_override is None:
             headers.update(await self._auth.get_headers())
-        url = path if path.startswith("http") else self._base_url + path
+        base = base_override or self._base_url
+        url = path if path.startswith("http") else base + path
         try:
             return await self._http.request(method, url, headers=headers,
                                             timeout=timeout, **kw)
@@ -224,31 +251,116 @@ class SpecDrivenProvider:
         if resp.status_code >= 400:
             raise error_for_response(resp)
 
-    @staticmethod
-    def _media_from_b64(resp: httpx.Response, model: str, prompt: str,
-                         seed: Optional[int]) -> GeneratedMedia:
+    async def _media_from_response(self, resp: httpx.Response, model: str, prompt: str,
+                                     seed: Optional[int]) -> GeneratedMedia:
         payload = resp.json()
         item = payload["data"][0]
-        if "b64_json" in item and item["b64_json"]:
-            data = base64.b64decode(item["b64_json"])
-        else:
-            data = item["url"]  # str → GeneratedMedia.is_url
-        return GeneratedMedia(kind=MediaKind.IMAGE, data=data, prompt=prompt,
-                              model=model, seed=seed)
+        b64 = item.get("b64_json") or ""
+        if b64:
+            return GeneratedMedia(kind=MediaKind.IMAGE, data=base64.b64decode(b64),
+                                  prompt=prompt, model=model, seed=seed)
+        url = item.get("url") or ""
+        if url:
+            # url → байты: Telegram нужен файл, не ссылка
+            data = await self._download(url)
+            return GeneratedMedia(kind=MediaKind.IMAGE, data=data, prompt=prompt,
+                                  model=model, seed=seed)
+        raise InvalidValue("provider response has neither b64_json nor url")
+
+    async def _download(self, url: str) -> bytes:
+        """Скачать артефакт. URL прошёл проверку доверия провайдера (сессия xAI)."""
+        try:
+            resp = await self._http.get(url)
+            self._check(resp)
+            return resp.content
+        except httpx.TimeoutException as e:
+            raise _transient(e) from e
+        except httpx.TransportError as e:
+            raise _transient(e) from e
 
 
 def _xai_refresh_hook(login_service):
-    """Refresh-хук SessionToken: перечитать сессию с диска.
+    """Refresh-хук SessionToken: OAuth refresh grant, затем перечитывание файла.
 
-    Hot-reload паттерн grok: внешний логин обновил файл — следующий запрос
-    увидит новый токен без рестарта контейнера.
+    Двухступенчато:
+    1. refresh_token grant к auth.x.ai/oauth2/token — обновляет протухший токен
+    2. если grant не удался — hot-reload с диска (внешний /login обновил файл)
+
+    Паттерн grok: сессия живёт в файле, обновление переживает рестарт.
     """
     async def _refresh():
         session = login_service.load_session()
-        if session and session.access_token:
+        if not session:
+            return None
+        if session.refresh_token:
+            refreshed = await _xai_refresh_grant(session, login_service)
+            if refreshed is not None:
+                return refreshed
+        if session.access_token:
             return session.access_token, session.expires_at or (time.time() + 24 * 3600)
         return None
     return _refresh
+
+
+async def _xai_refresh_grant(session, login_service):
+    """POST refresh_token grant; успех — токен сохранён и возвращён."""
+    import httpx as _httpx
+    try:
+        client = login_service.client
+        eps = await client._discover()
+        async with _httpx.AsyncClient(timeout=15.0) as http:
+            resp = await http.post(
+                eps["token"],
+                data={
+                    "grant_type": "refresh_token",
+                    "refresh_token": session.refresh_token,
+                    "client_id": XAI_OAUTH_CLIENT_ID,
+                },
+            )
+        if resp.status_code != 200:
+            log.warning("xai refresh grant failed: %s", resp.status_code)
+            return None
+        doc = resp.json()
+        new_access = doc.get("access_token", "")
+        if not new_access:
+            return None
+        import time as _time
+        expires_at = _time.time() + float(doc.get("expires_in", 3600))
+        new_session = _XaiSession(
+            access_token=new_access,
+            refresh_token=doc.get("refresh_token", session.refresh_token),
+            expires_at=expires_at,
+            email=session.email,
+            user_id=session.user_id,
+        )
+        client.save_session(new_session)
+        return new_access, expires_at
+    except Exception as exc:
+        log.warning("xai refresh grant error: %r", exc)
+        return None
+
+
+def _aspect_ratio(resolution) -> str:
+    """Resolution (1344x768) → xAI aspect_ratio ('16:9' и т.п.).
+
+    xAI принимает точные пропорции: 1:1, 3:4, 4:3, 9:16, 16:9, 2:3, 3:2, 21:9, auto…
+    Выбираем ближайшую простую к пропорции разрешения.
+    """
+    w, h = (int(x) for x in resolution.value.split("x"))
+    if w == h:
+        return "1:1"
+    ratio = w / h
+    best, best_diff = "auto", float("inf")
+    for cand in ("3:2", "2:3", "4:3", "3:4", "16:9", "9:16", "2:1", "1:2", "21:9", "5:2"):
+        cw, ch = (float(x) for x in cand.split(":"))
+        diff = abs(ratio - cw / ch)
+        if diff < best_diff:
+            best, best_diff = cand, diff
+    return best
+
+
+def _bytes_to_data_uri(data: bytes) -> str:
+    return "data:image/jpeg;base64," + base64.b64encode(data).decode("ascii")
 
 
 def _url_escape(s: str) -> str:

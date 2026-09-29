@@ -12,10 +12,13 @@ class EndpointSpec:
     Пути — параметры: между инсталляциями одного провайдера пути различаются
     (gen.pollinations.ai vs self-hosted gateway). Дефолты — OpenAI-форма.
     """
-    generate: str = "/v1/images/generations"
-    edit: str = "/v1/images/edits"
-    chat: str = "/v1/chat/completions"
-    models: str = "/v1/models"
+    # base_url в спеках уже включает версию (/v1); пути относительны от неё
+    generate: str = "/images/generations"
+    edit: str = "/images/edits"
+    chat: str = "/chat/completions"
+    models: str = "/models"
+    # отдельный хост для текста, если у провайдера так (pollinations)
+    chat_base_url: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,4 +43,6 @@ class ProviderSpec:
     image_edit_model: str = "klein"
     text_model: str = "openai"
     requires_auth: bool = True
+    b64_response: bool = True            # xAI-подписка отдаёт url, не b64
+    edit_json_form: bool = False         # xAI edit: JSON {image:{url,type}}, не multipart
     description: str = ""
