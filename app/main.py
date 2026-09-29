@@ -27,7 +27,7 @@ async def main() -> None:
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
     i18n = I18n(default_locale=settings.default_locale)
-    dp, ctx = build_dispatcher(core, i18n, owner_id=None)
+    dp, ctx = build_dispatcher(core, i18n, owner_id=settings.bot_owner_id)
     await attach_ctx_to_bot(bot, ctx)
 
     await bot.delete_webhook(drop_pending_updates=False)

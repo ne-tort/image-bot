@@ -3,6 +3,7 @@ import base64
 import logging
 import os
 import random
+import time
 from string import Template
 from typing import Optional
 
@@ -31,6 +32,7 @@ _DEFAULTS = {
     "TEXT_MODEL": "gpt-5-mini",
     "GROK_IMAGE_MODEL": "grok-2-image",
     "GROK_TEXT_MODEL": "grok-4",
+    "GROK_BUILD_BASE_URL": "https://api.x.ai/v1",
 }
 
 
@@ -61,10 +63,12 @@ class SpecDrivenProvider:
     """
 
     def __init__(self, spec: ProviderSpec, *, auth: Optional[Credentials] = None,
-                 retry: Optional[RetryPolicy] = None, timeout: float = 180.0):
+                 retry: Optional[RetryPolicy] = None, timeout: float = 180.0,
+                 xai_session=None):
         self.spec = spec
         self._base_url = _interp(spec.base_url).rstrip("/")
-        self._auth = auth
+        self._xai_session = xai_session
+        self._auth = auth or self._resolve_session_auth()
         self._retry = retry or RetryPolicy()
         self.name = spec.name
         self.supported_kinds = spec.kinds
@@ -75,7 +79,8 @@ class SpecDrivenProvider:
 
     # ── фабрика: спека + env → готовый провайдер ─────────
     @classmethod
-    def from_name(cls, name: str, *, retry: Optional[RetryPolicy] = None) -> "SpecDrivenProvider":
+    def from_name(cls, name: str, *, retry: Optional[RetryPolicy] = None,
+                  xai_session=None) -> "SpecDrivenProvider":
         """Собрать провайдера по имени спеки и окружению.
 
         auth_mode из спеки выбирает стратегию кредов:
@@ -86,14 +91,34 @@ class SpecDrivenProvider:
         """
         spec = spec_for(name)
         auth = cls._build_auth(spec)
-        return cls(spec, auth=auth, retry=retry)
+        return cls(spec, auth=auth, retry=retry, xai_session=xai_session)
+
+    def _resolve_session_auth(self) -> Optional[Credentials]:
+        """Спеки session-типа берут токен из персистентной xAI-сессии.
+
+        Сессия переживает рестарт (файл в volume). SessionToken с refresh-хуком:
+        протухла — обновимся реактивно (grok-паттерн).
+        """
+        if self._xai_session is None or self.spec.auth_mode != "session":
+            return None
+        session = self._xai_session.load_session()
+        if session is None:
+            return None
+        return SessionToken(
+            session.access_token,
+            expires_at=session.expires_at or (time.time() + 24 * 3600),
+            refresh=_xai_refresh_hook(self._xai_session),
+        )
 
     @staticmethod
     def _build_auth(spec: ProviderSpec) -> Optional[Credentials]:
         env_value = os.environ.get(spec.api_key_env, "") if spec.api_key_env else ""
         if spec.auth_mode == "session":
             if not env_value:
-                return None if not spec.requires_auth else _missing(spec)
+                # session-спека без env-токена: креды придут из xai_session
+                # (device-flow /login) — соберёмся без auth, ошибки покажет запрос.
+                # Прямой env-токен — ручной fallback для headless-инсталляций.
+                return None
             return SessionToken(env_value, expires_at=_session_expiry_default())
         if spec.auth_mode == "command":
             command = _command_from_env(spec.name)
@@ -210,6 +235,20 @@ class SpecDrivenProvider:
             data = item["url"]  # str → GeneratedMedia.is_url
         return GeneratedMedia(kind=MediaKind.IMAGE, data=data, prompt=prompt,
                               model=model, seed=seed)
+
+
+def _xai_refresh_hook(login_service):
+    """Refresh-хук SessionToken: перечитать сессию с диска.
+
+    Hot-reload паттерн grok: внешний логин обновил файл — следующий запрос
+    увидит новый токен без рестарта контейнера.
+    """
+    async def _refresh():
+        session = login_service.load_session()
+        if session and session.access_token:
+            return session.access_token, session.expires_at or (time.time() + 24 * 3600)
+        return None
+    return _refresh
 
 
 def _url_escape(s: str) -> str:

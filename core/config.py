@@ -12,6 +12,7 @@ class CoreSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     bot_token: str = ""            # нужен только app/main; держим в одном месте
+    bot_owner_id: int | None = None   # кто может /login (приватная подписка)
 
     image_provider: str = "pollinations"
     text_provider: str = "pollinations"
@@ -45,6 +46,8 @@ class CoreSettings(BaseSettings):
     hourly_image_limit: int = 5
     daily_text_limit: int = 100
     group_daily_limit: int = 50
+
+    xai_session_path: str = "/data/auth/xai_session.json"
 
     db_path: str = "/data/imagebot.db"
     default_locale: str = "ru"

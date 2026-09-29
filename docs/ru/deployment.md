@@ -18,6 +18,13 @@ docker compose up -d
 2. **/setprivacy → Disable** — обязательно для группового UX.
 3. Добавить бота в группу: он здоровается и включает себя сам.
 
+## Подписка Grok Build (опционально)
+
+Поставь `IMAGE_PROVIDER=grok_build` + `BOT_OWNER_ID`, отправь `/login` боту
+в личку и пройди device-code вход (детали:
+[providers.md](providers.md#xai-grok-build-вход-по-подписке-в-docker)).
+Сессия хранится в volume `/data` и переживает рестарты.
+
 ## Переменные окружения
 
 См. `.env.example` в корне репо. У всего есть дефолты, кроме `BOT_TOKEN`.

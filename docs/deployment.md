@@ -18,6 +18,13 @@ docker compose up -d
 2. **/setprivacy → Disable** — required for group UX.
 3. Add bot to a group; it greets and enables itself.
 
+## Grok Build subscription (optional)
+
+Set `IMAGE_PROVIDER=grok_build` + `BOT_OWNER_ID`, then send `/login` to the
+bot in private chat and complete the device-code flow (see
+[providers.md](providers.md#xai-grok-build-subscription-login-in-docker)).
+The session persists in the `/data` volume across restarts.
+
 ## Env reference
 
 See `.env.example` at repo root. Everything has a sane default except

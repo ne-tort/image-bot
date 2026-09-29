@@ -8,6 +8,7 @@ from core.i18n import I18n
 from tgbot.context import BotContext
 from tgbot.handlers.private import register_private
 from tgbot.handlers.group import register_group
+from tgbot.handlers.login import register_login
 
 log = logging.getLogger(__name__)
 
@@ -18,6 +19,7 @@ def build_dispatcher(core: CoreContainer, i18n: I18n, owner_id: int | None) -> t
 
     register_private(router, ctx)
     register_group(router, ctx)
+    register_login(router, ctx)
 
     dp = Dispatcher()
     dp["ctx"] = ctx

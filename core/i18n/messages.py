@@ -88,6 +88,49 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "Give me at least a couple of words — what should I draw?",
     },
 
+    # ── xAI login (device flow) ───────────────────────────
+    "login_started": {
+        "ru": "Открой ссылку и введи код 👇 (у тебя ~{minutes} мин)",
+        "en": "Open the link and enter the code 👇 (you have ~{minutes} min)",
+    },
+    "login_waiting": {"ru": "Жду подтверждения…", "en": "Waiting for approval…"},
+    "login_success": {
+        "ru": "Готово! 🎉 Подписка подключена как {email}. Сессия сохранена в контейнере — переживёт перезапуск.",
+        "en": "Done! 🎉 Subscription connected as {email}. Session stored in the container — survives restarts.",
+    },
+    "login_denied": {
+        "ru": "Логин отменён. Если передумал — /login снова.",
+        "en": "Login cancelled. Changed your mind? /login again.",
+    },
+    "login_expired": {
+        "ru": "Код протух. Запусти /login заново — код живёт пару минут.",
+        "en": "The code expired. Run /login again — codes live for a couple of minutes.",
+    },
+    "login_failed": {
+        "ru": "Не получилось войти: {reason}. Попробуй /login ещё раз.",
+        "en": "Couldn't sign in: {reason}. Try /login again.",
+    },
+    "login_only_owner": {
+        "ru": "Логин доступен только владельцу бота.",
+        "en": "Login is only available to the bot owner.",
+    },
+    "login_already": {
+        "ru": "Уже вошёл как {email}. /logout — если надо переключиться.",
+        "en": "Already signed in as {email}. /logout to switch.",
+    },
+    "logout_done": {
+        "ru": "Сессия удалена. Провайдер xAI отключён.",
+        "en": "Session removed. The xAI provider is now off.",
+    },
+    "logout_none": {
+        "ru": "И так никто не вошёл.",
+        "en": "Nobody is signed in anyway.",
+    },
+    "login_link_caption": {
+        "ru": "Код: <code>{code}</code>",
+        "en": "Code: <code>{code}</code>",
+    },
+
     # ── группы ────────────────────────────────────────────
     "group_chat_enabled": {
         "ru": "Бот активен в этом чате. /gen описание — и рисуем.",

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from core.config import CoreSettings
 from core.image.service import ImageService
+from core.xai_login import XaiLoginService
 from core.mcp.tools import ToolContext, ToolRegistry
 from core.providers.adapter import SpecDrivenProvider
 from core.providers.base import ProviderFactory
@@ -28,8 +31,14 @@ class CoreContainer:
         self.settings = settings
         self.storage = SqliteStorage(settings.db_path)
 
-        self._image_provider = SpecDrivenProvider.from_name(settings.image_provider)
-        self._text_provider = SpecDrivenProvider.from_name(settings.text_provider)
+        self._xai_login = XaiLoginService(Path(settings.xai_session_path))
+
+        self._image_provider = SpecDrivenProvider.from_name(
+            settings.image_provider, xai_session=self._xai_login
+        )
+        self._text_provider = SpecDrivenProvider.from_name(
+            settings.text_provider, xai_session=self._xai_login
+        )
 
         self._factory = _SplitProviderFactory(self._image_provider, self._text_provider)
 
@@ -63,6 +72,11 @@ class CoreContainer:
     def provider(self) -> SpecDrivenProvider:
         """Текстовый провайдер для enhance-флоу (кнопка ✨)."""
         return self._text_provider
+
+    @property
+    def xai_login(self) -> XaiLoginService:
+        """Device-flow логин xAI: /login в чате бота."""
+        return self._xai_login
 
     def _register_tools(self) -> None:
         async def generate_image(ctx: ToolContext, args: dict):

@@ -25,6 +25,11 @@ cp .env.example .env   # вписать BOT_TOKEN
 docker compose up -d
 ```
 
+Хочешь генерацию по **подписке xAI Grok Build** (не API-ключ)? Поставь
+`IMAGE_PROVIDER=grok_build`, `BOT_OWNER_ID=<твой id>` и отправь боту `/login`:
+он проведёт через device-code вход, сессия сохранится в volume и переживёт
+перезапуск контейнера.
+
 Дальше — [docs/README.md](docs/README.md) (EN) · [docs/ru/README.md](docs/ru/README.md) (RU).
 
 ## Слои

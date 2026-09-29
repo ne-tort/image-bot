@@ -11,10 +11,11 @@ COPY tgbot/ tgbot/
 COPY app/ app/
 
 ENV DB_PATH=/data/imagebot.db
+ENV XAI_SESSION_PATH=/data/auth/xai_session.json
 VOLUME /data
 
 # непривилегированный пользователь — и volume читается, и в контейнере чисто
-RUN useradd -m -u 1000 bot && mkdir -p /data && chown -R bot:bot /data /app
+RUN useradd -m -u 1000 bot && mkdir -p /data/auth && chown -R bot:bot /data /app
 USER bot
 
 CMD ["python", "-m", "app.main"]

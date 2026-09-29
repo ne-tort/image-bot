@@ -42,6 +42,39 @@ via a free API while text runs on your subscription.
 - `codex_subscription` — ChatGPT Plus/Pro session via credential command
 - `gemini_oauth` — Google account OAuth session
 
+## xAI Grok Build: subscription login in Docker
+
+Grok Build is a SuperGrok/X Premium+ **subscription**, not an API key. Login
+uses the official **OAuth device-code flow** (RFC 8628) against `auth.x.ai`
+— the same flow as `grok login --device-auth`, designed exactly for
+headless/Docker environments:
+
+1. Set `IMAGE_PROVIDER=grok_build` (and/or `TEXT_PROVIDER`), set
+   `BOT_OWNER_ID` to your Telegram user id.
+2. `docker compose up -d`, then send `/login` **in the bot's private chat**.
+3. The bot replies with a verification URL and a code. Open the URL on any
+   device (phone!), enter the code, approve.
+4. Done. The session (access + refresh token, email) is stored at
+   `/data/auth/xai_session.json` — a Docker volume, so it **survives
+   container restarts and image upgrades**.
+
+Details:
+
+- Discovery is live from `https://auth.x.ai/.well-known/openid-configuration`
+  (verified endpoints, trusted-issuer check — a hijacked discovery doc is
+  rejected).
+- The session file is written with owner-only permissions (0600, like grok's
+  `auth.json`).
+- Polling is RFC 8628-honest: `authorization_pending` waits the requested
+  interval, `slow_down` extends it, `access_denied`/`expired_token` fail
+  immediately with human copy.
+- **Hot-reload**: after login/logout the providers pick up the new token on
+  the next request — no container restart (the grok `auth.json` pattern).
+- `/login` is restricted to `BOT_OWNER_ID` (it's *your* paid subscription).
+  `/logout` clears the session file.
+- A raw token in `GROK_BUILD_SESSION_TOKEN` still works as a headless
+  fallback.
+
 ## Error semantics & retry
 
 Every HTTP failure becomes a typed error (`RateLimited`, `ContentRejected`,

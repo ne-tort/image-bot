@@ -42,6 +42,38 @@ TEXT_PROVIDER=codex_subscription  # твоя подписка ChatGPT Plus
 - `codex_subscription` — сессия ChatGPT Plus/Pro через команду кредов
 - `gemini_oauth` — OAuth-сессия Google-аккаунта
 
+## xAI Grok Build: вход по подписке в Docker
+
+Grok Build — это подписка SuperGrok/X Premium+, не API-ключ. Логин идёт
+официальным **OAuth device-code flow** (RFC 8628) против `auth.x.ai` —
+тот же флоу, что `grok login --device-auth`, созданный для headless/Docker:
+
+1. Поставь `IMAGE_PROVIDER=grok_build` (и/или `TEXT_PROVIDER`), укажи
+   `BOT_OWNER_ID` — свой Telegram user id.
+2. `docker compose up -d`, затем отправь `/login` **в личку бота**.
+3. Бот пришлёт ссылку и код. Открой ссылку на любом устройстве (можно с
+   телефона), введи код, подтверди.
+4. Готово. Сессия (access + refresh токены, email) лежит в
+   `/data/auth/xai_session.json` — это Docker volume: она **переживает
+   рестарты контейнера и апгрейды образа**.
+
+Детали:
+
+- Discovery берётся живьём с `https://auth.x.ai/.well-known/openid-configuration`
+  (проверенные эндпоинты; проверка доверенного issuer — подменённый
+  discovery-документ отклоняется).
+- Файл сессии пишется с правами только-для-владельца (0600, как `auth.json`
+  у grok).
+- Поллинг честный по RFC 8628: `authorization_pending` ждёт указанный
+  интервал, `slow_down` удлиняет его, `access_denied`/`expired_token`
+  сразу дают человеческую ошибку.
+- **Hot-reload**: после логина/логаута провайдеры берут новый токен со
+  следующего запроса — без рестарта контейнера (паттерн `auth.json` у grok).
+- `/login` доступен только `BOT_OWNER_ID` (это *твоя* платная подписка).
+  `/logout` удаляет файл сессии.
+- Сырой токен в `GROK_BUILD_SESSION_TOKEN` остаётся ручным fallback для
+  headless.
+
 ## Семантика ошибок и ретраи
 
 Любая HTTP-ошибка становится типизированной (`RateLimited`, `ContentRejected`,
