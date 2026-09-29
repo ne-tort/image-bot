@@ -59,8 +59,9 @@ async def enhance_prompt(
                 user_id=request.user_id,
                 chat_id=request.chat_id,
                 system_prompt=SYSTEM_PROMPT,
+                extra={"no_retry": True},
             ),
-            timeout=60.0,
+            timeout=45.0,
         )
         text = _extract_prompt(str(media.data))
         if text:

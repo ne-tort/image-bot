@@ -131,6 +131,11 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "Code: <code>{code}</code>",
     },
 
+    "working_long": {
+        "ru": "Придумываю детали… 🪄",
+        "en": "Adding some magic… 🪄",
+    },
+
     # ── промпт-цитата под фото ─────────────────────────────
     "final_prompt_quote": {
         "ru": "🪄 Финальный промпт",

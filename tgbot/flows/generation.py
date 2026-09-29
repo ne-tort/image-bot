@@ -42,15 +42,29 @@ async def run_generation_flow(
         chat_id=chat_id, resolution=resolution, style=style,
         reference_images=reference or (), skip_enhance=skip_enhance,
     )
+    import asyncio as _aio
+    long_shown = False
+    async def _tick() -> None:
+        nonlocal long_shown
+        await _aio.sleep(15)
+        try:
+            await status.edit_text(ctx.tr(locale, "working_long"))
+            long_shown = True
+        except Exception:
+            pass
+    ticker = _aio.create_task(_tick())
     try:
         if reference:
             media, remaining = await ctx.core.image.edit(request)
         else:
             media, remaining = await ctx.core.image.generate(request)
     except Exception as exc:
+        ticker.cancel()
         log.warning("generation failed user=%s: %r", message.from_user.id, exc)
         await status.edit_text(await friendly_error(ctx.i18n, locale, exc))
         return
+    finally:
+        ticker.cancel()
 
     try:
         await status.delete()

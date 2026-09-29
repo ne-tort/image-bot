@@ -44,7 +44,9 @@ async def _photo_edit(message: Message) -> None:
     if not (message.caption and _is_directed_at_bot(message)):
         return
     photo = await message.bot.download(message.photo[-1])
-    await run_generation_flow(ctx, message, message.caption, reference=[bytes(photo)])
+    if not isinstance(photo, bytes):
+        photo = photo.read()
+    await run_generation_flow(ctx, message, message.caption, reference=[photo])
 
 
 async def _edit(message: Message) -> None:
@@ -54,6 +56,8 @@ async def _edit(message: Message) -> None:
     replied = message.reply_to_message
     if replied and replied.photo:
         photo = await message.bot.download(replied.photo[-1])
+        if not isinstance(photo, bytes):
+            photo = photo.read()
         prompt = message.text.split(maxsplit=1)
         await run_generation_flow(ctx, message, prompt[1] if len(prompt) > 1 else "", reference=[bytes(photo)])
     else:

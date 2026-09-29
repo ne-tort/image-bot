@@ -220,12 +220,21 @@ class SpecDrivenProvider:
         if request.system_prompt:
             messages.append({"role": "system", "content": request.system_prompt})
         messages.append({"role": "user", "content": request.prompt})
+        # enhance: таймаут без ретраев — быстрый fallback к оригиналу лучше ожидания
+        no_retry = bool(request.extra.get("no_retry"))
         async def call() -> httpx.Response:
             return await self._request(
                 "POST", self.spec.endpoints.chat, timeout=timeout,
                 base_override=(chat_base or None),
                 json={"model": model, "messages": messages},
             )
+        if no_retry:
+            resp = await call()
+            self._check(resp)
+            payload = resp.json()
+            content = payload["choices"][0]["message"]["content"]
+            return GeneratedMedia(kind=MediaKind.TEXT, data=content,
+                                  prompt=request.prompt, model=model)
         resp = await retry_call(call, self._retry, what="text.generate")
         self._check(resp)
         payload = resp.json()

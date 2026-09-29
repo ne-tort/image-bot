@@ -72,9 +72,11 @@ async def _photo(message: Message, state: FSMContext) -> None:
     ctx: BotContext = message.bot.ctx  # type: ignore[attr-defined]
     data = await state.get_data()
     photo_bytes = await message.bot.download(message.photo[-1])
+    if not isinstance(photo_bytes, bytes):
+        photo_bytes = photo_bytes.read()  # BytesIO fallback
     await run_generation_flow(
         ctx, message, message.caption or "",
-        reference=[bytes(photo_bytes)], style=data.get("style"),
+        reference=[photo_bytes], style=data.get("style"),
     )
 
 
