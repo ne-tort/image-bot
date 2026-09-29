@@ -27,7 +27,7 @@ class ImageService:
         )
         if not verdict.allowed:
             raise QuotaExceeded(scope=verdict.scope, retry_after_seconds=verdict.retry_after_seconds)
-        if self._enhancer is not None:
+        if self._enhancer is not None and not request.skip_enhance:
             request = _with_prompt(request, await self._enhancer(request))
         media = await provider.generate(request)
         await self._storage.save_generation(request.user_id, request.chat_id, media)
@@ -42,7 +42,7 @@ class ImageService:
         )
         if not verdict.allowed:
             raise QuotaExceeded(scope=verdict.scope, retry_after_seconds=verdict.retry_after_seconds)
-        if self._enhancer is not None:
+        if self._enhancer is not None and not request.skip_enhance:
             request = _with_prompt(request, await self._enhancer(request))
         media = await provider.edit(request)
         await self._storage.save_generation(request.user_id, request.chat_id, media)

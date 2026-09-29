@@ -43,7 +43,7 @@ async def _photo_edit(message: Message) -> None:
         return
     if not (message.caption and _is_directed_at_bot(message)):
         return
-    photo = await message.bot.download(message.photo[-1], destination=bytearray())
+    photo = await message.bot.download(message.photo[-1])
     await run_generation_flow(ctx, message, message.caption, reference=[bytes(photo)])
 
 
@@ -53,7 +53,7 @@ async def _edit(message: Message) -> None:
         return
     replied = message.reply_to_message
     if replied and replied.photo:
-        photo = await message.bot.download(replied.photo[-1], destination=bytearray())
+        photo = await message.bot.download(replied.photo[-1])
         prompt = message.text.split(maxsplit=1)
         await run_generation_flow(ctx, message, prompt[1] if len(prompt) > 1 else "", reference=[bytes(photo)])
     else:

@@ -32,6 +32,7 @@ class GenerationRequest:
     negative: Optional[str] = None
     reference_images: Sequence[bytes] = field(default_factory=tuple)  # для edit
     system_prompt: Optional[str] = None  # системный промпт для текстовых моделей
+    skip_enhance: bool = False           # «Оригинал»: генерация без улучшения промпта
     extra: dict = field(default_factory=dict)
 
 

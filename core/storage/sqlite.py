@@ -45,13 +45,33 @@ CREATE TABLE IF NOT EXISTS generations (
     created_at  TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS original_prompts (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id     INTEGER NOT NULL,
+    user_id     INTEGER PRIMARY KEY,
     prompt      TEXT NOT NULL,
     created_at  INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_orig_user ON original_prompts (user_id);
+CREATE TABLE IF NOT EXISTS last_prompts (
+    user_id     INTEGER PRIMARY KEY,
+    prompt      TEXT NOT NULL,
+    created_at  INTEGER NOT NULL
+);
 """
+
+
+async def _migrate_legacy_prompt_tables(conn) -> None:
+    """original_prompts (id PK, несколько строк) → (user_id PK, одна строка).
+
+    Docker volume живёт долго; схема меняется — мигрируем тихо.
+    """
+    async with conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='original_prompts'"
+    ) as cur:
+        row = await cur.fetchone()
+    if not row:
+        return
+    async with conn.execute("PRAGMA table_info(original_prompts)") as cur:
+        cols = [r[1] for r in await cur.fetchall()]
+    if "id" in cols:  # старая схема: пересоздаст SCHEMA с user_id PK
+        await conn.execute("DROP TABLE original_prompts")
 
 
 class SqliteStorage:
@@ -67,6 +87,7 @@ class SqliteStorage:
     async def connect(self) -> None:
         self._conn = await aiosqlite.connect(self._db_path)
         self._conn.row_factory = aiosqlite.Row
+        await _migrate_legacy_prompt_tables(self._conn)
         await self._conn.executescript(SCHEMA)
         await self._conn.commit()
 
@@ -181,21 +202,28 @@ class SqliteStorage:
         return row["file_id"] if row and row["file_id"] else None
 
     async def save_original_prompt(self, user_id: int, prompt: str) -> None:
+        await self._save_one_prompt("original_prompts", user_id, prompt)
+
+    async def save_last_prompt(self, user_id: int, prompt: str) -> None:
+        await self._save_one_prompt("last_prompts", user_id, prompt)
+
+    async def _save_one_prompt(self, table: str, user_id: int, prompt: str) -> None:
+        """Одна таблица — одна строка на юзера (upsert)."""
         await self._exec(
-            "INSERT INTO original_prompts (user_id, prompt, created_at) "
-            "VALUES (?, ?, unixepoch())",
+            f"INSERT INTO {table} (user_id, prompt, created_at) VALUES (?, ?, unixepoch()) "
+            f"ON CONFLICT(user_id) DO UPDATE SET prompt = excluded.prompt, created_at = unixepoch()",
             (user_id, prompt),
         )
-        # держим только последний: чистим старше текущего
-        await self._exec(
-            "DELETE FROM original_prompts WHERE user_id = ? AND id < "
-            "(SELECT id FROM original_prompts WHERE user_id = ? ORDER BY id DESC LIMIT 1)",
-            (user_id, user_id),
+
+    async def last_prompt(self, user_id: int) -> Optional[str]:
+        row = await self._fetchone(
+            "SELECT prompt FROM last_prompts WHERE user_id = ?", (user_id,),
         )
+        return row["prompt"] if row else None
 
     async def original_prompt(self, user_id: int) -> Optional[str]:
         row = await self._fetchone(
-            "SELECT prompt FROM original_prompts WHERE user_id = ? ORDER BY id DESC LIMIT 1",
+            "SELECT prompt FROM original_prompts WHERE user_id = ?",
             (user_id,),
         )
         return row["prompt"] if row else None

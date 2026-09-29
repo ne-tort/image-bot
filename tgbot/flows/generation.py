@@ -17,6 +17,7 @@ async def run_generation_flow(
     ctx: BotContext, message: Message, prompt: str, *,
     reference: list[bytes] | None = None, style: str | None = None,
     resolution: Resolution = Resolution.SQ, chat_enabled_guard: bool = False,
+    skip_enhance: bool = False,
 ) -> None:
     """Один флоу для лички и групп: запрос → enhance → генерация → фото.
 
@@ -39,7 +40,7 @@ async def run_generation_flow(
     request = GenerationRequest(
         prompt=prompt, kind=MediaKind.IMAGE, user_id=message.from_user.id,
         chat_id=chat_id, resolution=resolution, style=style,
-        reference_images=reference or (),
+        reference_images=reference or (), skip_enhance=skip_enhance,
     )
     try:
         if reference:
@@ -78,7 +79,8 @@ async def run_generation_flow(
         reply_markup=result_kb(locale),
     )
     await ctx.core.storage.set_last_media_file_id(message.from_user.id, sent.photo[-1].file_id)
-    # оригинал юзера — для кнопки «Оригинал»
+    # финальный промпт — для «Ещё раз»; оригинал — для «Оригинал»
+    await ctx.core.storage.save_last_prompt(message.from_user.id, final_prompt)
     await ctx.core.storage.save_original_prompt(message.from_user.id, prompt)
 
 
