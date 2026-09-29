@@ -44,6 +44,13 @@ CREATE TABLE IF NOT EXISTS generations (
     file_id     TEXT,
     created_at  TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS original_prompts (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL,
+    prompt      TEXT NOT NULL,
+    created_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_orig_user ON original_prompts (user_id);
 """
 
 
@@ -172,6 +179,26 @@ class SqliteStorage:
             "ORDER BY id DESC LIMIT 1", (user_id,),
         )
         return row["file_id"] if row and row["file_id"] else None
+
+    async def save_original_prompt(self, user_id: int, prompt: str) -> None:
+        await self._exec(
+            "INSERT INTO original_prompts (user_id, prompt, created_at) "
+            "VALUES (?, ?, unixepoch())",
+            (user_id, prompt),
+        )
+        # держим только последний: чистим старше текущего
+        await self._exec(
+            "DELETE FROM original_prompts WHERE user_id = ? AND id < "
+            "(SELECT id FROM original_prompts WHERE user_id = ? ORDER BY id DESC LIMIT 1)",
+            (user_id, user_id),
+        )
+
+    async def original_prompt(self, user_id: int) -> Optional[str]:
+        row = await self._fetchone(
+            "SELECT prompt FROM original_prompts WHERE user_id = ? ORDER BY id DESC LIMIT 1",
+            (user_id,),
+        )
+        return row["prompt"] if row else None
 
     async def set_last_media_file_id(self, user_id: int, file_id: str) -> None:
         await self._exec(

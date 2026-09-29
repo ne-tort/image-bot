@@ -52,7 +52,11 @@ class CoreContainer:
             per_user_hourly=max(1, settings.daily_text_limit // 4),
             per_chat_daily=settings.daily_text_limit,
         )
-        self.image = ImageService(self._factory, Limiter(self.storage, image_profile), self.storage)
+        from core.prompting.enhancer import enhance_prompt
+        self.image = ImageService(
+            self._factory, Limiter(self.storage, image_profile), self.storage,
+            enhancer=lambda req: enhance_prompt(self._text_provider, req),
+        )
         self.text = TextService(self._factory, Limiter(self.storage, text_profile), self.storage)
         self.video = VideoService(self._factory)
         self.tts = TTSService(self._factory)

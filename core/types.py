@@ -31,6 +31,7 @@ class GenerationRequest:
     seed: Optional[int] = None
     negative: Optional[str] = None
     reference_images: Sequence[bytes] = field(default_factory=tuple)  # для edit
+    system_prompt: Optional[str] = None  # системный промпт для текстовых моделей
     extra: dict = field(default_factory=dict)
 
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 import logging
 
-from aiogram.types import Message, InlineKeyboardMarkup
+from aiogram.types import Message, MessageEntity
 
 from core.types import GenerationRequest, MediaKind, Resolution
 from tgbot.context import BotContext
@@ -10,7 +10,7 @@ from tgbot.ui import result_kb
 
 log = logging.getLogger(__name__)
 
-_MAX_PROMPT = 1000  # хранит смысл, отсекает пасты
+_MAX_PROMPT = 1000
 
 
 async def run_generation_flow(
@@ -18,9 +18,10 @@ async def run_generation_flow(
     reference: list[bytes] | None = None, style: str | None = None,
     resolution: Resolution = Resolution.SQ, chat_enabled_guard: bool = False,
 ) -> None:
-    """Один поток для лички и групп: показать «рисую» → генерация → фото с кнопками.
+    """Один флоу для лички и групп: запрос → enhance → генерация → фото.
 
-    Различие личка/группа — только в оформлении (locale, reply-режим), не в логике.
+    Под фото — expandable-цитата (спойлер) с финальным промптом, кнопка
+    «Оригинал» показывает запрос юзера как он был.
     """
     prompt = prompt.strip()[:_MAX_PROMPT]
     locale = await _locale_of(ctx, message)
@@ -29,7 +30,6 @@ async def run_generation_flow(
         if not reference:
             await message.answer(ctx.tr(locale, "err_empty_prompt"))
             return
-        # фото без подписи → просим подпись (promptart-паттерн)
         await message.answer(ctx.tr(locale, "err_edit_no_photo"))
         return
 
@@ -55,14 +55,41 @@ async def run_generation_flow(
         await status.delete()
     except Exception:
         pass
+
+    # Финальный (улучшенный) промпт — в expandable-цитату: свёрнут по дефолту
+    final_prompt = (media.prompt or prompt).strip()[:_MAX_PROMPT]
+    header = ctx.tr(locale, "final_prompt_quote")
+    caption = header + "\n" + final_prompt
+    entities = [
+        MessageEntity(type="expandable_blockquote",
+                      offset=len(header) + 1, length=len(final_prompt)),
+    ]
+    if len(caption) > 1024:
+        cut = 1024 - (len(header) + 1)
+        final_prompt = final_prompt[:cut - 1]
+        caption = header + "\n" + final_prompt
+        entities = [MessageEntity(type="expandable_blockquote",
+                                  offset=len(header) + 1, length=len(final_prompt))]
+
     sent = await message.answer_photo(
-        media.data,
-        caption=ctx.tr(locale, "done_prompt_footer", prompt=prompt),
+        _photo_input(media),
+        caption=caption,
+        caption_entities=entities,
         reply_markup=result_kb(locale),
     )
     await ctx.core.storage.set_last_media_file_id(message.from_user.id, sent.photo[-1].file_id)
+    # оригинал юзера — для кнопки «Оригинал»
+    await ctx.core.storage.save_original_prompt(message.from_user.id, prompt)
 
 
 async def _locale_of(ctx: BotContext, message: Message) -> str:
     await ctx.core.storage.ensure_user(message.from_user.id)
     return await ctx.core.storage.user_locale(message.from_user.id)
+
+
+def _photo_input(media):
+    """media.data: bytes → BufferedInputFile; str (url/file_id) — как есть."""
+    if isinstance(media.data, bytes):
+        from aiogram.types import BufferedInputFile
+        return BufferedInputFile(media.data, filename="image.jpg")
+    return media.data

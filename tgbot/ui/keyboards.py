@@ -4,16 +4,13 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from core.prompting.styles import STYLES
 
-# Inline-кнопки, не reply-клавиатуры: в группах reply-клавиатуры запрещены UX-бовом
-# (promptart-референс это делает правильно — inline под фото).
-
 
 def result_kb(locale: str) -> InlineKeyboardMarkup:
-    """Кнопки под выданной картинкой. Единый для лички и группы."""
-    again = "Ещё раз" if locale == "ru" else "Again"
-    enhance = "✨ Сделать лучше" if locale == "ru" else "✨ Make it better"
+    """Кнопки под результатом: оригинал (что просил юзер) + ещё раз."""
+    original = "📄 Оригинал" if locale == "ru" else "📄 Original"
+    again = "🔄 Ещё раз" if locale == "ru" else "🔄 Again"
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=enhance, callback_data="img:enhance"),
+        [InlineKeyboardButton(text=original, callback_data="img:original"),
          InlineKeyboardButton(text=again, callback_data="img:again")],
     ])
 

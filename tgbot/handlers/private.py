@@ -71,10 +71,12 @@ async def _set_style(cb: CallbackQuery, state: FSMContext) -> None:
 async def _photo(message: Message, state: FSMContext) -> None:
     ctx: BotContext = message.bot.ctx  # type: ignore[attr-defined]
     data = await state.get_data()
-    photo = await message.photo[-1].download(destination=bytearray())
+    photo_bytes = await message.bot.download(
+        message.photo[-1], destination=bytearray()
+    )
     await run_generation_flow(
         ctx, message, message.caption or "",
-        reference=[bytes(photo)], style=data.get("style"),
+        reference=[bytes(photo_bytes)], style=data.get("style"),
     )
 
 

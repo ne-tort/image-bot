@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 import base64
 import logging
 import os
@@ -18,7 +18,6 @@ from core.providers.registry import spec_for
 from core.providers.retry import RetryPolicy, retry_call
 from core.providers.spec import EndpointSpec, ProviderSpec
 from core.types import GeneratedMedia, GenerationRequest, MediaKind
-from core.prompting.styles import apply_style
 from core.providers.xai_oauth import Session as _XaiSession, XAI_OAUTH_CLIENT_ID
 
 log = logging.getLogger(__name__)
@@ -149,7 +148,7 @@ class SpecDrivenProvider:
 
     # ── модальности ──────────────────────────────────────
     async def _image(self, request: GenerationRequest, timeout: float) -> GeneratedMedia:
-        prompt = apply_style(request.prompt, request.style)
+        prompt = _apply_style(request.prompt, request.style)
         seed = request.seed if request.seed is not None else random.randrange(2 ** 31)
         w, h = (int(x) for x in request.resolution.value.split("x"))
         model = _interp(self.spec.image_model)
@@ -185,7 +184,7 @@ class SpecDrivenProvider:
         return await self._media_from_response(resp, model, prompt, seed)
 
     async def _image_edit(self, request: GenerationRequest, timeout: float) -> GeneratedMedia:
-        prompt = apply_style(request.prompt, request.style)
+        prompt = _apply_style(request.prompt, request.style)
         model = _interp(self.spec.image_edit_model)
         if self.spec.edit_json_form:
             # xAI-форма: JSON, image = data-URI; до 5 источников
@@ -217,11 +216,15 @@ class SpecDrivenProvider:
     async def _text(self, request: GenerationRequest, timeout: float) -> GeneratedMedia:
         model = _interp(self.spec.text_model)
         chat_base = _interp(self.spec.endpoints.chat_base_url) if self.spec.endpoints.chat_base_url else ""
+        messages = []
+        if request.system_prompt:
+            messages.append({"role": "system", "content": request.system_prompt})
+        messages.append({"role": "user", "content": request.prompt})
         async def call() -> httpx.Response:
             return await self._request(
                 "POST", self.spec.endpoints.chat, timeout=timeout,
                 base_override=(chat_base or None),
-                json={"model": model, "messages": [{"role": "user", "content": request.prompt}]},
+                json={"model": model, "messages": messages},
             )
         resp = await retry_call(call, self._retry, what="text.generate")
         self._check(resp)
@@ -338,6 +341,12 @@ async def _xai_refresh_grant(session, login_service):
     except Exception as exc:
         log.warning("xai refresh grant error: %r", exc)
         return None
+
+
+def _apply_style(prompt: str, style_key) -> str:
+    """Лениво: разрывает цикл providers → prompting → providers."""
+    from core.prompting.styles import apply_style
+    return apply_style(prompt, style_key)
 
 
 def _aspect_ratio(resolution) -> str:

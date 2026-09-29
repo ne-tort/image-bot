@@ -131,6 +131,20 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "Code: <code>{code}</code>",
     },
 
+    # ── промпт-цитата под фото ─────────────────────────────
+    "final_prompt_quote": {
+        "ru": "🪄 Финальный промпт",
+        "en": "🪄 Final prompt",
+    },
+    "original_prompt_msg": {
+        "ru": "Ты просил:\n{original}",
+        "en": "You asked for:\n{original}",
+    },
+    "original_prompt_none": {
+        "ru": "Оригинал не сохранился 🤷",
+        "en": "Original not saved 🤷",
+    },
+
     # ── группы ────────────────────────────────────────────
     "group_chat_enabled": {
         "ru": "Бот активен в этом чате. /gen описание — и рисуем.",
