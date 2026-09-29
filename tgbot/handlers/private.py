@@ -87,27 +87,22 @@ async def _text(message: Message, state: FSMContext) -> None:
 
 
 async def _img_action(cb: CallbackQuery, state: FSMContext) -> None:
-    """Ещё раз / ✨ Сделать лучше — под последним фото."""
+    """Re-try last / Original — per-user prompts from storage (not FSM)."""
     ctx: BotContext = cb.bot.ctx  # type: ignore[attr-defined]
     action = cb.data.split(":", 1)[1]
-    locale = await ctx.core.storage.user_locale(cb.from_user.id)
     await cb.answer()
 
-    file_id = await ctx.core.storage.last_media_file_id(cb.from_user.id)
-    data = await state.get_data()
-
     if action == "again":
-        # сохранённый file_id позволяет перегенерить без повторного upload
-        await run_generation_flow(ctx, cb.message, data.get("last_prompt", ""), style=data.get("style"))
+        last = await ctx.core.storage.last_prompt(cb.from_user.id) or ""
+        await run_generation_flow(ctx, cb.message, last)
         return
 
-    if action == "enhance" and file_id:
-        import aiogram
-        prompt = data.get("last_prompt", "")
-        if not prompt:
+    if action == "original":
+        original = await ctx.core.storage.original_prompt(cb.from_user.id)
+        if not original:
+            locale = await ctx.core.storage.user_locale(cb.from_user.id)
+            await cb.message.reply(ctx.tr(locale, "original_prompt_none"))
             return
-        await cb.message.edit_caption(ctx.tr(locale, "enhancing"))
-        from core.prompting.styles import enhance_with_text
-        enhanced = await enhance_with_text(prompt, ctx.core.provider, locale)
-        await state.update_data(last_prompt=enhanced)
-        await run_generation_flow(ctx, cb.message, enhanced, style=data.get("style"))
+        # regenerate with the raw user prompt, bypassing the enhancer
+        await run_generation_flow(ctx, cb.message, original, skip_enhance=True)
+

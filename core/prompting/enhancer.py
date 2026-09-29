@@ -20,16 +20,6 @@ COLORS - the precision rule:
 - NEVER introduce new colors, borders, frames, or vignettes that the user
   did not ask for. If the image has no border, do not mention borders at all.
 
-FRAMING - the full-bleed rule:
-- The main subject must fill the frame edge-to-edge with no margins, padding,
-  empty background bands, or dead space around it, unless the user explicitly
-  asked for a background, wide shot, or scene.
-- For a logo, icon, emblem, sticker, or single object: the subject occupies
-  the entire canvas, cropped tight to its silhouette. Say so explicitly:
-  "fills the entire frame edge-to-edge, tightly cropped, no background
-  margins" - and specify a plain flat background only if the user named one
-  or if a background is structurally needed.
-
 Output format - one paragraph of natural English (or the user's language if
 not English), 30-80 words, flowing sentences, no quotes, no markdown, no
 explanations. Put the subject and its action in the first 15 words.
