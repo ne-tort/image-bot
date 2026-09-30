@@ -3,7 +3,7 @@ from __future__ import annotations
 from core.providers.base import ProviderFactory
 from core.ratelimit.limiter import Limiter
 from core.storage.repository import Storage
-from core.types import GenerationRequest, MediaKind
+from core.types import GenerationRequest, MediaKind, QuotaExceeded
 
 
 class VideoService:
@@ -18,9 +18,11 @@ class VideoService:
 
     async def generate(self, request: GenerationRequest) -> tuple[object, int]:
         request.kind = MediaKind.VIDEO
-        verdict = await self._limiter.check_and_commit(
-            user_id=request.user_id, chat_id=request.chat_id or request.user_id,
-            kind="video")
+        verdict = await self._limiter.check_and_consume(
+            request.user_id, request.chat_id, "video")
+        if not verdict.allowed:
+            raise QuotaExceeded(scope=verdict.scope,
+                                 retry_after_seconds=verdict.retry_after_seconds)
         provider = self._factory.for_kind(MediaKind.VIDEO)
         if self._enhancer is not None and not request.skip_enhance:
             import dataclasses
