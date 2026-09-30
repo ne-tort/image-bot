@@ -85,7 +85,23 @@ async def enhance_prompt(
     return request.prompt
 
 
+VIDEO_ADDON = """
+
+This is a VIDEO request. Build the prompt with this anatomy:
+subject, motion, camera, sound, duration. Front-load the motion - Aurora
+renders actions in the order they appear. Include a "Sound:" block describing
+the audio (ambient, material, spatial cues) unless the user asked for silence.
+Use exact camera terms when possible: locked, push-in, pull-out, pan left,
+tracking shot, aerial, handheld. End with duration if the user hinted at it."""
+
+
 def _user_message(request: GenerationRequest) -> str:
+    if request.kind == MediaKind.VIDEO:
+        base = "The user wants a new video. Their request:\n" + request.prompt
+        if request.reference_images:
+            base = ("The user attached a reference image for the video. "
+                    "Their request:\n" + request.prompt)
+        return base + VIDEO_ADDON
     if request.reference_images:
         colors = _dominant_colors(request.reference_images[0])
         palette = (

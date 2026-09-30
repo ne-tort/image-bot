@@ -6,6 +6,10 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# ffmpeg: извлечение первого кадра из присланного видео
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY core/ core/
 COPY tgbot/ tgbot/
 COPY app/ app/

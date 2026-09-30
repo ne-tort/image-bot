@@ -58,7 +58,17 @@ class CoreContainer:
             enhancer=lambda req: enhance_prompt(self._text_provider, req),
         )
         self.text = TextService(self._factory, Limiter(self.storage, text_profile), self.storage)
-        self.video = VideoService(self._factory)
+        video_profile = LimitProfile(
+            per_user_daily=settings.daily_video_limit,
+            per_user_hourly=settings.hourly_video_limit,
+            per_chat_daily=settings.daily_chat_limit,
+        )
+        self.video = VideoService(self._factory, Limiter(self.storage, video_profile), self.storage,
+                                  enhancer=lambda req: enhance_prompt(self._text_provider, req))
+
+    @property
+    def text_provider(self):
+        return self._text_provider
         self.tts = TTSService(self._factory)
         self.tools = ToolRegistry()
         self._register_tools()

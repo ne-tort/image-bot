@@ -136,6 +136,19 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "Adding some magic… 🪄",
     },
 
+    "working_video": {
+        "ru": "Снимаю… 🎬",
+        "en": "Rolling… 🎬",
+    },
+    "working_long_video": {
+        "ru": "Рендерю кадры… это займёт минуту-другую 🎞",
+        "en": "Rendering frames… give it a minute 🎞",
+    },
+    "attached_doc": {
+        "ru": "⚠️ Telegram сжимает фото — держи оригинал файлом 📎",
+        "en": "⚠️ Telegram compresses photos — here is the original file 📎",
+    },
+
     # ── промпт-цитата под фото ─────────────────────────────
     "final_prompt_quote": {
         "ru": "🪄 Финальный промпт",

@@ -1,4 +1,5 @@
 ﻿from __future__ import annotations
+import asyncio
 import base64
 import logging
 import os
@@ -139,6 +140,8 @@ class SpecDrivenProvider:
             return await self._image(request, timeout)
         if request.kind is MediaKind.TEXT:
             return await self._text(request, timeout)
+        if request.kind is MediaKind.VIDEO:
+            return await self._video(request, timeout)
         raise NotImplementedKind(f"{self.name}: generate({request.kind.value}) not implemented")
 
     async def edit(self, request: GenerationRequest, *, timeout: float = 180.0) -> GeneratedMedia:
@@ -152,6 +155,8 @@ class SpecDrivenProvider:
         seed = request.seed if request.seed is not None else random.randrange(2 ** 31)
         w, h = (int(x) for x in request.resolution.value.split("x"))
         model = _interp(self.spec.image_model)
+        if request.quality:
+            model = _interp("${GROK_IMAGE_QUALITY_MODEL}") or "grok-imagine-image-quality"
         if "{prompt}" in self.spec.endpoints.generate:
             # GET-форма Pollinations: /image/{prompt}
             async def call() -> httpx.Response:
@@ -164,11 +169,11 @@ class SpecDrivenProvider:
             self._check(resp)
             return GeneratedMedia(kind=MediaKind.IMAGE, data=resp.content,
                                   prompt=prompt, model=model, seed=seed)
-        # OpenAI-форма: POST /images/generations (база включает /v1)
-        payload: dict = {"model": model, "prompt": prompt, "n": 1}
+        # OpenAI-форма: POST /images/generations (пути без /v1)
+        payload: dict = {"model": model, "prompt": prompt, "n": max(1, request.n_images)}
         if self.spec.edit_json_form:
-            # xAI-подписка: aspect_ratio вместо size
-            payload["aspect_ratio"] = _aspect_ratio(request.resolution)
+            # xAI-форма: aspect_ratio вместо size
+            payload["aspect_ratio"] = request.aspect_ratio or "1:1"
         else:
             payload["size"] = request.resolution.value
         if self.spec.b64_response:
@@ -183,6 +188,50 @@ class SpecDrivenProvider:
         self._check(resp)
         return await self._media_from_response(resp, model, prompt, seed)
 
+    # ── видео: grok-imagine-video-1.5 (async: create + poll) ───────────
+    async def _video(self, request: GenerationRequest, timeout: float) -> GeneratedMedia:
+        model = "grok-imagine-video-1.5"
+        payload: dict = {"model": model, "prompt": request.prompt}
+        if request.duration:
+            payload["duration"] = request.duration
+        if request.aspect_ratio:
+            payload["aspect_ratio"] = request.aspect_ratio
+        else:
+            payload["aspect_ratio"] = "16:9"
+        if request.reference_images:
+            # image-to-video: первый кадр (или референс)
+            payload["image"] = {"url": _bytes_to_data_uri(request.reference_images[0]),
+                                "type": "image_url"}
+        base = _interp(self.spec.base_url).rstrip("/")
+        async def create() -> httpx.Response:
+            return await self._request("POST", "/videos/generations",
+                                       timeout=timeout, json=payload)
+        resp = await retry_call(create, self._retry, what="video.create")
+        self._check(resp)
+        request_id = resp.json().get("request_id")
+        if not request_id:
+            raise InvalidValue("video: no request_id in response")
+        # поллинг: GET /videos/{id} — статус done + video.url
+        deadline = time.monotonic() + max(timeout, 600.0)
+        while time.monotonic() < deadline:
+            await asyncio.sleep(4.0)
+            poll = await self._request("GET", f"/videos/{request_id}", timeout=30.0)
+            self._check(poll)
+            data = poll.json()
+            status = data.get("status", "")
+            if status == "done":
+                url = data.get("video", {}).get("url", "")
+                if not url:
+                    raise InvalidValue("video done but no url")
+                video_bytes = await self._download(url)
+                return GeneratedMedia(kind=MediaKind.VIDEO, data=video_bytes,
+                                      mime="video/mp4", prompt=request.prompt, model=model)
+            if status in ("failed", "error", "rejected", "moderation_rejected"):
+                reason = data.get("error") or data.get("reason") or status
+                raise ContentRejected(f"video generation failed: {reason}")
+            if status == "expired":
+                raise Transient("video request expired")
+        raise Transient("video generation timed out")
     async def _image_edit(self, request: GenerationRequest, timeout: float) -> GeneratedMedia:
         prompt = _apply_style(request.prompt, request.style)
         model = _interp(self.spec.image_edit_model)

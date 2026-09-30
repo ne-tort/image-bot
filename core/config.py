@@ -43,6 +43,8 @@ class CoreSettings(BaseSettings):
     gemini_session_token: str = ""
 
     daily_image_limit: int = 25
+    daily_video_limit: int = 8
+    hourly_video_limit: int = 2
     hourly_image_limit: int = 5
     daily_text_limit: int = 100
     group_daily_limit: int = 50

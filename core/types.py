@@ -26,6 +26,10 @@ class GenerationRequest:
     kind: MediaKind
     user_id: int                      # для лимитов и истории, не для провайдера
     chat_id: Optional[int] = None
+    aspect_ratio: str = "1:1"          # "1:1","2:3","3:2","9:16","16:9"; "" = на усмотрение ИИ
+    n_images: int = 1                   # 1/2/4/8 вариантов для картинок
+    quality: bool = False                # grok-imagine-image-quality по явной просьбе
+    duration: Optional[int] = None       # сек для видео
     resolution: Resolution = Resolution.SQ
     style: Optional[str] = None       # ключ из core/prompting/styles.py
     seed: Optional[int] = None
