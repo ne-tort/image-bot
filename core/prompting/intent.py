@@ -8,12 +8,14 @@ from core.types import GenerationRequest, MediaKind
 log = logging.getLogger(__name__)
 
 ALLOWED_RATIOS = ("1:1", "2:3", "3:2", "9:16", "16:9")
+ALLOWED_DURATIONS = (6, 10, 15)
 
 INTENT_SYSTEM_PROMPT = """You are the intent router for an AI media generation bot.
 Analyze the user's request and reply with ONE JSON object, nothing else:
 
 {"action": "image | video | quality | edit",
  "aspect_ratio": "one of 1:1, 2:3, 3:2, 9:16, 16:9, or auto",
+ "duration": 6 or 10 or 15 (videos only, or null),
  "enhance": true | false,
  "reason": "short explanation"}
 
@@ -37,6 +39,10 @@ Rules:
   complete (specific subject, action, style, composition - 30+ words of clear
   visual direction, or a fully specified professional prompt).
   True for anything short, vague, or casual.
+- duration (video only): 6 (default), 10, or 15 seconds. Map the user's
+  wording: 'short'/'mini' -> 6; standard clip or nothing said -> 6;
+  'longer' -> 10; 'long'/'full version' -> 15. If the user gives exact
+  seconds, pick the closest of 6/10/15.
 - reason: max 8 words in the user's language.
 
 Reply with the JSON object ONLY."""
@@ -45,11 +51,13 @@ Reply with the JSON object ONLY."""
 class Intent:
     """Решение роутера: действие + пропорции + enhance."""
 
-    def __init__(self, action: str, aspect_ratio: str, enhance: bool, reason: str = ""):
+    def __init__(self, action: str, aspect_ratio: str, enhance: bool, reason: str = "",
+                 duration: int = 6):
         self.action = action
         self.aspect_ratio = aspect_ratio if aspect_ratio in ALLOWED_RATIOS else ""
         self.enhance = bool(enhance)
         self.reason = reason
+        self.duration = int(duration) if duration in ALLOWED_DURATIONS else 6
 
     @property
     def is_video(self) -> bool:
@@ -103,6 +111,7 @@ async def route_intent(
             aspect_ratio=str(data.get("aspect_ratio", "")).lower(),
             enhance=data.get("enhance", True),
             reason=str(data.get("reason", ""))[:80],
+            duration=data.get("duration") or 6,
         )
     except (ProviderError, Exception) as exc:
         log.warning("intent routing failed, fallback to default: %r", exc)

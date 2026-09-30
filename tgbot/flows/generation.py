@@ -65,6 +65,7 @@ async def run_generation_flow(
     request = GenerationRequest(
         prompt=prompt, kind=MediaKind.IMAGE, user_id=message.from_user.id,
         chat_id=chat_id, aspect_ratio=intent.aspect_ratio,
+        duration=intent.duration if intent.is_video else None,
         style=style, reference_images=reference or (),
         skip_enhance=skip_enhance or not intent.enhance,
     )
